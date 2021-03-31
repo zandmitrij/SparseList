@@ -1,8 +1,27 @@
 from collections.abc import MutableSequence
 
-
 class SparseList(MutableSequence):
-    def __init__(self, lst=None):
+    
+    def _indexcheck(f):
+        def inner(self, *args):
+            index = args[0]
+            if isinstance(index, int):
+                if index < 0:
+                    index += self._len
+                if not (0 <= index < self._len):
+                    raise IndexError('list index out of range') 
+            elif isinstance(index, slice):
+                index = index.indices(self._len)
+            else:
+                raise TypeError('Not valid type of index')
+            
+            args = list(args)
+            args[0] = index
+            return f(self, *args)        
+        return inner
+    
+    
+    def __init__(self, lst = None):
         self._data = {}
         self._len = 0
         if lst is not None:
@@ -10,31 +29,21 @@ class SparseList(MutableSequence):
                 for i in lst:
                     self.append(i)
             elif isinstance(lst, SparseList):
-                self._data = lst._data.copy()
-                self._len = lst._len
+                    self._data = lst._data.copy()
+                    self._len = lst._len
             else:
                 raise TypeError
-
+    
+    @_indexcheck
     def __getitem__(self, index):
         if isinstance(index, int):
-            if index < 0:
-                index += self._len
-            if not (0 <= index < self._len):
-                raise IndexError('list index out of range')
             return self._data.get(index, 0)
-
-        if isinstance(index, slice):
-            start, stop, step = index.indices(self._len)
-            return SparseList([self._data.get(i, 0) for i in range(start, stop, step)])
-        raise TypeError
-
+        else:   # if index is tuple of indices
+            return SparseList([self[i] for i in range(*index)])
+        
+    @_indexcheck
     def __setitem__(self, index, obj):
-
         if isinstance(index, int):
-            if index < 0:
-                index += self._len
-            if not (0 <= index < self._len):
-                raise IndexError('list index out of range')
             if not isinstance(obj, (int, float)):
                 raise TypeError('Only int and float types are allowed to SparseList')
             if obj != 0:
@@ -44,76 +53,65 @@ class SparseList(MutableSequence):
                     self._data.pop(index)
                 except KeyError:
                     pass
-
-        elif isinstance(index, slice):
-            start, stop, step = index.indices(self._len)
-
+                
+        else:   # if index is slice
+            start, stop, step = index
+            
             if step == 1:
-                if isinstance(obj, (int, float)):
-                    del self[start:stop]
-                    self.insert(start, obj)
-                elif isinstance(obj, (list, SparseList)):
-                    del self[start:stop]
-                    for i in reversed(obj):
-                        self.insert(start, i)
-                else:
+                if not isinstance(obj, (int, float, list, SparseList)):
                     raise TypeError('not valid type!')
-
-            else:
-                if isinstance(obj, (list, SparseList)):
-
-                    if len(range(start, stop, step)) != len(obj):
-                        raise ValueError('attempt to assign sequence to extended slice with not same size')
-                    else:
-                        it_obj = iter(obj)
-                        for i in range(start, stop, step):
-                            del self[i]
-                            self.insert(i, next(it_obj))
-
-                else:
+                if isinstance(obj, (int, float)):
+                    obj = [obj]
+                del self[start:stop]
+                for i in reversed(obj):
+                    self.insert(start, i)
+                             
+            else:   # if step not equals 1
+                if not isinstance(obj, (list, SparseList)):
                     raise TypeError('only list and SparseList types is allowed')
-
-
-        else:
-            raise TypeError
-
+                if len(range(*index)) != len(obj):
+                    raise ValueError('attempt to assign sequence to extended slice with not same size')
+                it_obj = iter(obj)
+                for i in range(*index):
+                    del self[i]
+                    self.insert(i, next(it_obj))
+                    
+            
+    @_indexcheck
     def __delitem__(self, index):
         if isinstance(index, int):
-            if index < 0:
-                index += self._len
-            if not (0 <= index < self._len):
-                raise IndexError('list index out of range')
             if self[index] != 0:
                 del self._data[index]
-            self._data = {k - (k > index): v for k, v in self._data.items()}
+            self._data = {k-(k>index) : v for k, v in self._data.items()}
             self._len -= 1
-
-        elif isinstance(index, slice):
-            start, stop, step = index.indices(self._len)
-            if step > 0:
-                start, stop, step = stop - 1, start - 1, -step
-            for i in range(start, stop, step):
-                del self[i]
-
+            
         else:
-            raise TypeError
-
+            start, stop, step = index
+            if step > 0:
+                index = stop-1, start-1, -step 
+            for i in range(*index):
+                del self[i]
+    
+        
     def __len__(self):
         return self._len
-
+    
     def insert(self, index, n):
-        if not isinstance(n, (int, float)):
+        if not isinstance (n, (int, float)):
             raise TypeError('can\'t insert not int or float')
-        if not isinstance(index, int):
+        if not isinstance (index, int):
             raise TypeError('position must be int')
-
+                            
         if index < 0:
             index += self._len
-            if index < 0:
-                index = 0
-        self._data = {k + (k >= index): v for k, v in self._data.items()}
-        self._data[index] = n
+        index = max(index, 0)
+        index = min(index, self._len)
+        self._data = {k + (k>=index):v for k, v in self._data.items()}
+        if n != 0:
+            self._data[index] = n
         self._len += 1
-
+    
+    
     def __repr__(self):
         return '[' + ', '.join(map(str, (self._data.get(i, 0) for i in range(self._len)))) + ']'
+    
