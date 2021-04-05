@@ -1,24 +1,22 @@
 from collections.abc import MutableSequence
 
+
+def _indexcheck(f):
+    def inner(self, index, *args):
+        if isinstance(index, int):
+            if index < 0:
+                index += self._len
+            if not (0 <= index < self._len):
+                raise IndexError('list index out of range')
+        elif isinstance(index, slice):
+            index = index.indices(self._len)
+        else:
+            raise TypeError('Not valid type of index')
+
+        return f(self, index, *args)
+    return inner
+
 class SparseList(MutableSequence):
-
-    def _indexcheck(f):
-        def inner(self, *args):
-            index = args[0]
-            if isinstance(index, int):
-                if index < 0:
-                    index += self._len
-                if not (0 <= index < self._len):
-                    raise IndexError('list index out of range') 
-            elif isinstance(index, slice):
-                index = index.indices(self._len)
-            else:
-                raise TypeError('Not valid type of index')
-
-            args = list(args)
-            args[0] = index
-            return f(self, *args)
-        return inner
 
 
     def __init__(self, lst = None):
@@ -66,7 +64,7 @@ class SparseList(MutableSequence):
                     it_obj = iter(obj)
                     for i in range(start, stop):
                         self[i] = next(it_obj)
-		else:
+                else:
                     del self[start:stop]
                     for i in reversed(obj):
                         self.insert(start, i)
